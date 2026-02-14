@@ -1,0 +1,262 @@
+from flask import Flask, jsonify, send_from_directory
+from elasticsearch import Elasticsearch
+import requests
+import urllib3
+from datetime import datetime, timedelta
+import pytz
+from config import *
+
+urllib3.disable_warnings()
+app = Flask(__name__)
+
+# =========================
+# ELASTIC CONNECTION
+# =========================
+es = Elasticsearch(
+    ELASTIC_HOST,
+    basic_auth=(ELASTIC_USER, ELASTIC_PASS),
+    verify_certs=False
+)
+
+def safe_index_create(index_name):
+    try:
+        if not es.indices.exists(index=index_name):
+            es.indices.create(index=index_name)
+    except Exception as e:
+        print("Index create error:", e)
+
+safe_index_create(INDEX_HOST)
+safe_index_create(INDEX_LOG)
+safe_index_create(INDEX_PROBLEM)
+
+# =========================
+# ZABBIX LOGIN SAFE
+# =========================
+def zabbix_login():
+    try:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "user.login",
+            "params": {
+                "username": ZABBIX_USER,
+                "password": ZABBIX_PASSWORD
+            },
+            "id": 1
+        }
+        r = requests.post(ZABBIX_URL, json=payload, timeout=10)
+        return r.json().get("result")
+    except Exception as e:
+        print("Zabbix login error:", e)
+        return None
+
+# =========================
+# GET HOST SAFE
+# =========================
+def get_hosts():
+    token = zabbix_login()
+    if not token:
+        return []
+
+    try:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "host.get",
+            "params": {
+                "output": ["hostid", "host"],
+                "selectInterfaces": ["available"],
+                "selectItems": ["name", "lastvalue"]
+            },
+            "auth": token,
+            "id": 2
+        }
+
+        r = requests.post(ZABBIX_URL, json=payload, timeout=15)
+        return r.json().get("result", [])
+    except Exception as e:
+        print("Zabbix host error:", e)
+        return []
+
+# =========================
+# SYNC HOST SAFE
+# =========================
+def sync_hosts():
+    hosts = get_hosts()
+
+    for h in hosts:
+        try:
+            cpu = ram = net_in = net_out = 0
+            status = 2
+
+            if h.get("interfaces"):
+                status = int(h["interfaces"][0].get("available", 2))
+
+            for item in h.get("items", []):
+                name = item.get("name", "").lower()
+                value = item.get("lastvalue", 0)
+
+                try:
+                    value = float(value)
+                except:
+                    value = 0
+
+                if "cpu" in name:
+                    cpu = value
+                elif "memory" in name:
+                    ram = value
+                elif "incoming" in name:
+                    net_in = value
+                elif "outgoing" in name:
+                    net_out = value
+
+            doc = {
+                "host": h.get("host", "unknown"),
+                "available": status,
+                "cpu": cpu,
+                "ram": ram,
+                "net_in": net_in,
+                "net_out": net_out,
+                "timestamp": datetime.utcnow()
+            }
+
+            es.index(index=INDEX_HOST, id=h.get("hostid"), document=doc)
+
+        except Exception as e:
+            print("Host sync error:", e)
+
+# =========================
+# SAFE COUNT
+# =========================
+def safe_count(index_name, body=None):
+    try:
+        if es.indices.exists(index=index_name):
+            if body:
+                return es.count(index=index_name, body=body)["count"]
+            return es.count(index=index_name)["count"]
+    except:
+        pass
+    return 0
+
+# =========================
+# DASHBOARD API
+# =========================
+@app.route("/api/dashboard")
+def dashboard():
+
+    sync_hosts()
+
+    # HOST DATA
+    hosts = []
+    total = up = down = unknown = 0
+
+    try:
+        if es.indices.exists(index=INDEX_HOST):
+            result = es.search(index=INDEX_HOST, size=1000)
+            hits = result.get("hits", {}).get("hits", [])
+
+            for h in hits:
+                data = h.get("_source", {})
+                status = data.get("available", 2)
+
+                if status == 1:
+                    up += 1
+                elif status == 0:
+                    down += 1
+                else:
+                    unknown += 1
+
+                hosts.append(data)
+
+            total = len(hits)
+
+    except Exception as e:
+        print("Host read error:", e)
+
+    percent_up = round((up / total) * 100, 2) if total > 0 else 0
+
+    # =========================
+    # THREAT QUERIES
+    # =========================
+    now = datetime.utcnow()
+    yesterday = now - timedelta(hours=24)
+
+    time_filter = {
+        "range": {
+            "@timestamp": {
+                "gte": yesterday.isoformat(),
+                "lte": now.isoformat()
+            }
+        }
+    }
+
+    bruteforce_query = {
+        "query": {
+            "bool": {
+                "must": [time_filter],
+                "should": [
+                    {"match_phrase": {"event.outcome": "failure"}},
+                    {"wildcard": {"message": "*Failed password*"}},
+                    {"wildcard": {"message": "*authentication failure*"}}
+                ]
+            }
+        }
+    }
+
+    ddos_query = {
+        "query": {
+            "bool": {
+                "must": [time_filter],
+                "filter": [{"match": {"message": "HTTP"}}]
+            }
+        }
+    }
+
+    bruteforce = safe_count(INDEX_LOG, bruteforce_query)
+    ddos = safe_count(INDEX_LOG, ddos_query)
+    problems = safe_count(INDEX_PROBLEM)
+
+    # =========================
+    # SEVERITY SAFE
+    # =========================
+    severity = {"critical": 0, "high": 0, "warning": 0, "info": 0}
+
+    try:
+        if es.indices.exists(index=INDEX_PROBLEM):
+            res = es.search(index=INDEX_PROBLEM, size=1000)
+            for hit in res.get("hits", {}).get("hits", []):
+                sev = hit.get("_source", {}).get("severity", "info").lower()
+                if sev in severity:
+                    severity[sev] += 1
+    except:
+        pass
+
+    # =========================
+    # TIMEZONE SAFE
+    # =========================
+    try:
+        tz = pytz.timezone(TIMEZONE)
+        local_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        local_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    return jsonify({
+        "total": total,
+        "up": up,
+        "down": down,
+        "unknown": unknown,
+        "percent_up": percent_up,
+        "hosts": hosts,
+        "bruteforce": bruteforce,
+        "ddos": ddos,
+        "problems": problems,
+        "severity": severity,
+        "time": local_time
+    })
+
+
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
