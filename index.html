@@ -1,182 +1,224 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>SOC Enterprise Dashboard</title>
+<meta charset="UTF-8">
+<title>SOC Enterprise v3</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
 body{
-background:#0b0f19;
-color:#e5e7eb;
-font-family:Segoe UI;
-margin:0;
-padding:20px;
+    margin:0;
+    background:#0e1624;
+    font-family: Inter, Segoe UI, sans-serif;
+    color:#e5e7eb;
 }
 .header{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:20px;
+    padding:20px 30px;
+    background:#111827;
+    border-bottom:1px solid #1f2937;
+    display:flex;
+    justify-content:space-between;
 }
+.title{
+    font-size:20px;
+    font-weight:600;
+    color:#00ffcc;
+}
+.container{ padding:30px; }
 .grid{
-display:grid;
-grid-template-columns:repeat(4,1fr);
-gap:20px;
+    display:grid;
+    grid-template-columns: repeat(4,1fr);
+    gap:20px;
 }
 .card{
-background:#111827;
-padding:20px;
-border-radius:14px;
-box-shadow:0 0 20px rgba(0,0,0,0.5);
-transition:0.3s;
+    background:#111827;
+    padding:20px;
+    border-radius:12px;
+    border:1px solid #1f2937;
 }
-.card:hover{transform:translateY(-4px);}
-.big{font-size:28px;font-weight:bold;}
+.card-title{
+    font-size:12px;
+    color:#9ca3af;
+    text-transform:uppercase;
+    margin-bottom:8px;
+}
+.value{
+    font-size:30px;
+    font-weight:600;
+}
 .green{color:#22c55e;}
 .red{color:#ef4444;}
-.orange{color:#f59e0b;}
-.section{margin-top:30px;}
+.purple{color:#8b5cf6;}
 .progress{
-background:#1f2937;
-height:18px;
-border-radius:10px;
-overflow:hidden;
-margin-top:10px;
+    margin-top:10px;
+    height:10px;
+    background:#1f2937;
+    border-radius:6px;
 }
-.bar{
-height:18px;
-background:#22c55e;
-transition:width 0.5s;
+.progress-bar{
+    height:100%;
+    background:#22c55e;
+    border-radius:6px;
 }
-table{
-width:100%;
-border-collapse:collapse;
+.section{ margin-top:30px; }
+.table{
+    width:100%;
+    border-collapse:collapse;
 }
-th,td{
-padding:8px;
-border-bottom:1px solid #1f2937;
+.table th{
+    font-size:12px;
+    color:#9ca3af;
+    text-align:left;
+    padding:10px 0;
+    border-bottom:1px solid #1f2937;
 }
-canvas{
-background:#0f172a;
-border-radius:10px;
-padding:10px;
+.table td{
+    padding:12px 0;
+    border-bottom:1px solid #1f2937;
 }
+.status-up{color:#22c55e;font-weight:600;}
+.status-down{color:#ef4444;font-weight:600;}
+.status-unknown{color:#f59e0b;font-weight:600;}
 </style>
 </head>
+
 <body>
 
 <div class="header">
-<h2>🛡 SOC Enterprise v2</h2>
-<div id="time"></div>
+<div class="title">SOC Enterprise v3 – Infrastructure Dashboard</div>
+<div id="clock"></div>
 </div>
+
+<div class="container">
 
 <div class="grid">
-<div class="card"><div>Total</div><div id="total" class="big"></div></div>
-<div class="card"><div>UP</div><div id="up" class="big green"></div></div>
-<div class="card"><div>DOWN</div><div id="down" class="big red"></div></div>
-<div class="card"><div>UNKNOWN</div><div id="unknown" class="big orange"></div></div>
-</div>
-
-<div class="card section">
-Server Health
-<div class="progress"><div id="healthBar" class="bar"></div></div>
-</div>
-
-<div class="section grid">
 <div class="card">
-<h3>Threat Overview 24H</h3>
-<canvas id="attackChart"></canvas>
+<div class="card-title">Total Servers</div>
+<div id="total" class="value">0</div>
 </div>
+
 <div class="card">
-<h3>Severity</h3>
-<canvas id="severityChart"></canvas>
+<div class="card-title">UP</div>
+<div id="up" class="value green">0</div>
+</div>
+
+<div class="card">
+<div class="card-title">DOWN</div>
+<div id="down" class="value red">0</div>
+</div>
+
+<div class="card">
+<div class="card-title">Daily Uptime</div>
+<div id="uptime" class="value green">0%</div>
+<div class="progress">
+<div id="progressBar" class="progress-bar" style="width:0%"></div>
+</div>
 </div>
 </div>
 
-<div class="card section">
-<h3>Host Monitoring</h3>
-<table>
+<div class="grid section">
+<div class="card">
+<div class="card-title">Bruteforce (24H)</div>
+<div id="bruteforce" class="value red">0</div>
+</div>
+
+<div class="card">
+<div class="card-title">DDoS (24H)</div>
+<div id="ddos" class="value purple">0</div>
+</div>
+
+<div class="card" style="grid-column: span 2;">
+<div class="card-title">Security Events</div>
+<canvas id="chart"></canvas>
+</div>
+</div>
+
+<div class="section card">
+<div class="card-title">Zabbix Hosts</div>
+<table class="table">
 <thead>
 <tr>
 <th>Host</th>
-<th>Status</th>
 <th>CPU</th>
 <th>RAM</th>
 <th>Net In</th>
 <th>Net Out</th>
+<th>Status</th>
 </tr>
 </thead>
-<tbody id="hostTable"></tbody>
+<tbody id="hosts"></tbody>
 </table>
 </div>
 
-<script>
-let attackChart,severityChart;
+</div>
 
-function loadData(){
-fetch('/api/dashboard')
+<script>
+let chart;
+
+function load(){
+fetch("/api/dashboard")
 .then(res=>res.json())
 .then(data=>{
 
-document.getElementById("time").innerText=data.time;
 document.getElementById("total").innerText=data.total;
 document.getElementById("up").innerText=data.up;
 document.getElementById("down").innerText=data.down;
-document.getElementById("unknown").innerText=data.unknown;
+document.getElementById("bruteforce").innerText=data.bruteforce;
+document.getElementById("ddos").innerText=data.ddos;
 
-document.getElementById("healthBar").style.width=data.percent_up+"%";
+document.getElementById("uptime").innerText=data.daily_uptime+"%";
+document.getElementById("progressBar").style.width=data.daily_uptime+"%";
+document.getElementById("clock").innerText=data.time;
 
-let html="";
+let tbody=document.getElementById("hosts");
+tbody.innerHTML="";
+
 data.hosts.forEach(h=>{
-let status="UNKNOWN",color="orange";
-if(h.available==1){status="UP";color="green";}
-if(h.available==0){status="DOWN";color="red";}
-html+=`<tr>
+let status="UNKNOWN";
+let cls="status-unknown";
+
+if(h.available==1){status="UP";cls="status-up";}
+if(h.available==0){status="DOWN";cls="status-down";}
+
+tbody.innerHTML+=`
+<tr>
 <td>${h.host}</td>
-<td class="${color}">${status}</td>
-<td>${h.cpu}%</td>
-<td>${h.ram}</td>
+<td>${h.cpu.toFixed(1)}%</td>
+<td>${h.ram.toFixed(1)}%</td>
 <td>${h.net_in}</td>
 <td>${h.net_out}</td>
+<td class="${cls}">${status}</td>
 </tr>`;
 });
-document.getElementById("hostTable").innerHTML=html;
 
-if(attackChart) attackChart.destroy();
-attackChart=new Chart(document.getElementById('attackChart'),{
-type:'line',
+updateChart(data.bruteforce,data.ddos);
+});
+}
+
+function updateChart(bf,dd){
+if(chart) chart.destroy();
+
+chart=new Chart(document.getElementById("chart"),{
+type:"bar",
 data:{
-labels:['Bruteforce','DDoS','Problems'],
+labels:["Bruteforce","DDoS"],
 datasets:[{
-label:'24H Threat',
-data:[data.bruteforce,data.ddos,data.problems],
-borderColor:'#ef4444',
-fill:false
+data:[bf,dd],
+backgroundColor:["#ef4444","#8b5cf6"]
 }]
+},
+options:{
+plugins:{legend:{display:false}},
+scales:{
+x:{ticks:{color:"#9ca3af"}},
+y:{ticks:{color:"#9ca3af"}}
 }
-});
-
-if(severityChart) severityChart.destroy();
-severityChart=new Chart(document.getElementById('severityChart'),{
-type:'doughnut',
-data:{
-labels:['Critical','High','Warning','Info'],
-datasets:[{
-data:[
-data.severity.critical,
-data.severity.high,
-data.severity.warning,
-data.severity.info
-],
-backgroundColor:['#dc2626','#f97316','#eab308','#3b82f6']
-}]
 }
-});
-
 });
 }
 
-loadData();
-setInterval(loadData,60000);
+load();
+setInterval(load,60000);
 </script>
 
 </body>

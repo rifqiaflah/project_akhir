@@ -18,6 +18,9 @@ es = Elasticsearch(
     verify_certs=False
 )
 
+# =========================
+# SAFE INDEX CREATE
+# =========================
 def safe_index_create(index_name):
     try:
         if not es.indices.exists(index=index_name):
@@ -30,7 +33,7 @@ safe_index_create(INDEX_LOG)
 safe_index_create(INDEX_PROBLEM)
 
 # =========================
-# ZABBIX LOGIN SAFE
+# ZABBIX LOGIN
 # =========================
 def zabbix_login():
     try:
@@ -50,7 +53,7 @@ def zabbix_login():
         return None
 
 # =========================
-# GET HOST SAFE
+# GET HOST
 # =========================
 def get_hosts():
     token = zabbix_login()
@@ -87,8 +90,9 @@ def sync_hosts():
             cpu = ram = net_in = net_out = 0
             status = 2
 
-            if h.get("interfaces"):
-                status = int(h["interfaces"][0].get("available", 2))
+            interfaces = h.get("interfaces", [])
+            if interfaces:
+                status = int(interfaces[0].get("available", 2))
 
             for item in h.get("items", []):
                 name = item.get("name", "").lower()
@@ -144,7 +148,6 @@ def dashboard():
 
     sync_hosts()
 
-    # HOST DATA
     hosts = []
     total = up = down = unknown = 0
 
@@ -172,9 +175,10 @@ def dashboard():
         print("Host read error:", e)
 
     percent_up = round((up / total) * 100, 2) if total > 0 else 0
+    daily_uptime_percent = percent_up
 
     # =========================
-    # THREAT QUERIES
+    # THREAT COUNTER (24H)
     # =========================
     now = datetime.utcnow()
     yesterday = now - timedelta(hours=24)
@@ -193,10 +197,10 @@ def dashboard():
             "bool": {
                 "must": [time_filter],
                 "should": [
-                    {"match_phrase": {"event.outcome": "failure"}},
                     {"wildcard": {"message": "*Failed password*"}},
                     {"wildcard": {"message": "*authentication failure*"}}
-                ]
+                ],
+                "minimum_should_match": 1
             }
         }
     }
@@ -214,24 +218,6 @@ def dashboard():
     ddos = safe_count(INDEX_LOG, ddos_query)
     problems = safe_count(INDEX_PROBLEM)
 
-    # =========================
-    # SEVERITY SAFE
-    # =========================
-    severity = {"critical": 0, "high": 0, "warning": 0, "info": 0}
-
-    try:
-        if es.indices.exists(index=INDEX_PROBLEM):
-            res = es.search(index=INDEX_PROBLEM, size=1000)
-            for hit in res.get("hits", {}).get("hits", []):
-                sev = hit.get("_source", {}).get("severity", "info").lower()
-                if sev in severity:
-                    severity[sev] += 1
-    except:
-        pass
-
-    # =========================
-    # TIMEZONE SAFE
-    # =========================
     try:
         tz = pytz.timezone(TIMEZONE)
         local_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
@@ -243,20 +229,17 @@ def dashboard():
         "up": up,
         "down": down,
         "unknown": unknown,
-        "percent_up": percent_up,
+        "daily_uptime": daily_uptime_percent,
         "hosts": hosts,
         "bruteforce": bruteforce,
         "ddos": ddos,
         "problems": problems,
-        "severity": severity,
         "time": local_time
     })
-
 
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
