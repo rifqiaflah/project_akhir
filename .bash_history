@@ -1,1 +1,3 @@
 su
+exit
+su

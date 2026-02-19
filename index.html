@@ -2,223 +2,308 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>SOC Enterprise v3</title>
+<title>Infrastructure Monitoring Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{
-    margin:0;
-    background:#0e1624;
-    font-family: Inter, Segoe UI, sans-serif;
-    color:#e5e7eb;
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #f3f4f6;
+    color: #111827;
 }
-.header{
-    padding:20px 30px;
-    background:#111827;
-    border-bottom:1px solid #1f2937;
-    display:flex;
-    justify-content:space-between;
+
+.header {
+    background: #111827;
+    color: white;
+    padding: 15px;
+    font-size: 20px;
+    font-weight: bold;
 }
-.title{
-    font-size:20px;
-    font-weight:600;
-    color:#00ffcc;
+
+.container {
+    padding: 20px;
 }
-.container{ padding:30px; }
-.grid{
-    display:grid;
-    grid-template-columns: repeat(4,1fr);
-    gap:20px;
+
+.grid-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
 }
-.card{
-    background:#111827;
-    padding:20px;
-    border-radius:12px;
-    border:1px solid #1f2937;
+
+.card {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
-.card-title{
-    font-size:12px;
-    color:#9ca3af;
-    text-transform:uppercase;
-    margin-bottom:8px;
+
+.card h4 {
+    margin: 0;
+    font-size: 14px;
+    color: #6b7280;
 }
-.value{
-    font-size:30px;
-    font-weight:600;
+
+.card h2 {
+    margin: 5px 0 0 0;
 }
-.green{color:#22c55e;}
-.red{color:#ef4444;}
-.purple{color:#8b5cf6;}
-.progress{
-    margin-top:10px;
-    height:10px;
-    background:#1f2937;
-    border-radius:6px;
+
+.progress-bg {
+    background: #e5e7eb;
+    height: 18px;
+    border-radius: 10px;
+    margin-top: 8px;
+    overflow: hidden;
 }
-.progress-bar{
-    height:100%;
-    background:#22c55e;
-    border-radius:6px;
+
+.progress-bar {
+    height: 100%;
+    background: #16a34a;
+    width: 0%;
+    transition: 0.5s;
 }
-.section{ margin-top:30px; }
-.table{
-    width:100%;
-    border-collapse:collapse;
+
+.section-title {
+    font-weight: bold;
+    margin-top: 25px;
+    margin-bottom: 10px;
 }
-.table th{
-    font-size:12px;
-    color:#9ca3af;
-    text-align:left;
-    padding:10px 0;
-    border-bottom:1px solid #1f2937;
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 20px;
 }
-.table td{
-    padding:12px 0;
-    border-bottom:1px solid #1f2937;
+
+.log-box {
+    background: #111827;
+    color: #e5e7eb;
+    padding: 10px;
+    height: 300px;
+    overflow-y: auto;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 13px;
 }
-.status-up{color:#22c55e;font-weight:600;}
-.status-down{color:#ef4444;font-weight:600;}
-.status-unknown{color:#f59e0b;font-weight:600;}
+
+.log-entry {
+    margin-bottom: 5px;
+}
+
+.chart-container {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+th, td {
+    padding: 10px;
+    text-align: center;
+}
+
+th {
+    background: #111827;
+    color: white;
+}
+
+tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+.badge {
+    padding: 5px 10px;
+    border-radius: 20px;
+    color: white;
+    font-size: 12px;
+}
+
+.up { background: #16a34a; }
+.down { background: #dc2626; }
+.unknown { background: #f59e0b; }
+
+.footer {
+    margin-top: 20px;
+    font-size: 13px;
+    color: #6b7280;
+}
 </style>
 </head>
 
 <body>
 
 <div class="header">
-<div class="title">SOC Enterprise v3 – Infrastructure Dashboard</div>
-<div id="clock"></div>
+Infrastructure Monitoring Dashboard
 </div>
 
 <div class="container">
 
-<div class="grid">
-<div class="card">
-<div class="card-title">Total Servers</div>
-<div id="total" class="value">0</div>
+<div class="grid-summary">
+
+    <div class="card">
+        <h4>Total Registered Servers</h4>
+        <h2 id="total">0</h2>
+    </div>
+
+    <div class="card">
+        <h4>Online Servers</h4>
+        <h2 id="up" style="color:#16a34a">0</h2>
+    </div>
+
+    <div class="card">
+        <h4>Offline Servers</h4>
+        <h2 id="down" style="color:#dc2626">0</h2>
+    </div>
+
+    <div class="card">
+        <h4>Unknown Status</h4>
+        <h2 id="unknown" style="color:#f59e0b">0</h2>
+    </div>
+
+    <div class="card">
+        <h4>24h Availability Percentage</h4>
+        <div class="progress-bg">
+            <div class="progress-bar" id="uptimeBar"></div>
+        </div>
+        <h2 id="uptimeText">0%</h2>
+    </div>
+
 </div>
 
-<div class="card">
-<div class="card-title">UP</div>
-<div id="up" class="value green">0</div>
+<div class="section-title">Security Event Logs (Live)</div>
+
+<div class="log-box" id="logBox"></div>
+
+<div class="section-title">Security Trend (Last 24 Hours)</div>
+
+<div class="grid-2">
+
+    <div class="chart-container">
+        <h4>DDoS Activity Trend (Left Chart)</h4>
+        <canvas id="ddosChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h4>Bruteforce Attempt Trend (Right Chart)</h4>
+        <canvas id="bruteChart"></canvas>
+    </div>
+
 </div>
 
-<div class="card">
-<div class="card-title">DOWN</div>
-<div id="down" class="value red">0</div>
-</div>
+<div class="section-title">Server Detail Overview</div>
 
-<div class="card">
-<div class="card-title">Daily Uptime</div>
-<div id="uptime" class="value green">0%</div>
-<div class="progress">
-<div id="progressBar" class="progress-bar" style="width:0%"></div>
-</div>
-</div>
-</div>
-
-<div class="grid section">
-<div class="card">
-<div class="card-title">Bruteforce (24H)</div>
-<div id="bruteforce" class="value red">0</div>
-</div>
-
-<div class="card">
-<div class="card-title">DDoS (24H)</div>
-<div id="ddos" class="value purple">0</div>
-</div>
-
-<div class="card" style="grid-column: span 2;">
-<div class="card-title">Security Events</div>
-<canvas id="chart"></canvas>
-</div>
-</div>
-
-<div class="section card">
-<div class="card-title">Zabbix Hosts</div>
-<table class="table">
+<table>
 <thead>
 <tr>
-<th>Host</th>
-<th>CPU</th>
-<th>RAM</th>
-<th>Net In</th>
-<th>Net Out</th>
+<th>Server Name</th>
+<th>CPU Usage (%)</th>
+<th>Memory Usage (%)</th>
+<th>Bandwidth In</th>
+<th>Bandwidth Out</th>
 <th>Status</th>
 </tr>
 </thead>
-<tbody id="hosts"></tbody>
+<tbody id="hostTable"></tbody>
 </table>
+
+<div class="footer">
+Last Updated: <span id="time">-</span>
 </div>
 
 </div>
 
 <script>
-let chart;
+let labels = [];
+let bruteData = [];
+let ddosData = [];
+let lastLogCount = 0;
 
-function load(){
-fetch("/api/dashboard")
-.then(res=>res.json())
-.then(data=>{
-
-document.getElementById("total").innerText=data.total;
-document.getElementById("up").innerText=data.up;
-document.getElementById("down").innerText=data.down;
-document.getElementById("bruteforce").innerText=data.bruteforce;
-document.getElementById("ddos").innerText=data.ddos;
-
-document.getElementById("uptime").innerText=data.daily_uptime+"%";
-document.getElementById("progressBar").style.width=data.daily_uptime+"%";
-document.getElementById("clock").innerText=data.time;
-
-let tbody=document.getElementById("hosts");
-tbody.innerHTML="";
-
-data.hosts.forEach(h=>{
-let status="UNKNOWN";
-let cls="status-unknown";
-
-if(h.available==1){status="UP";cls="status-up";}
-if(h.available==0){status="DOWN";cls="status-down";}
-
-tbody.innerHTML+=`
-<tr>
-<td>${h.host}</td>
-<td>${h.cpu.toFixed(1)}%</td>
-<td>${h.ram.toFixed(1)}%</td>
-<td>${h.net_in}</td>
-<td>${h.net_out}</td>
-<td class="${cls}">${status}</td>
-</tr>`;
+const bruteChart = new Chart(document.getElementById("bruteChart"), {
+    type: "line",
+    data: { labels: labels, datasets: [{ label: "Bruteforce Attempts", borderColor: "red", data: bruteData }] }
 });
 
-updateChart(data.bruteforce,data.ddos);
+const ddosChart = new Chart(document.getElementById("ddosChart"), {
+    type: "line",
+    data: { labels: labels, datasets: [{ label: "DDoS Activity", borderColor: "blue", data: ddosData }] }
 });
+
+async function loadData() {
+    const res = await fetch("/api/dashboard");
+    const data = await res.json();
+
+    document.getElementById("total").innerText = data.total;
+    document.getElementById("up").innerText = data.up;
+    document.getElementById("down").innerText = data.down;
+    document.getElementById("unknown").innerText = data.unknown;
+
+    document.getElementById("uptimeText").innerText = data.daily_uptime + "%";
+    document.getElementById("uptimeBar").style.width = data.daily_uptime + "%";
+
+    document.getElementById("time").innerText = data.time;
+
+    if (labels.length > 10) {
+        labels.shift();
+        bruteData.shift();
+        ddosData.shift();
+    }
+
+    labels.push(new Date().toLocaleTimeString());
+    bruteData.push(data.bruteforce);
+    ddosData.push(data.ddos);
+
+    bruteChart.update();
+    ddosChart.update();
+
+    const table = document.getElementById("hostTable");
+    table.innerHTML = "";
+
+    data.hosts.forEach(h => {
+        let statusClass = "unknown";
+        let statusText = "Unknown";
+
+        if (h.available === 1) { statusClass = "up"; statusText = "Online"; }
+        else if (h.available === 0) { statusClass = "down"; statusText = "Offline"; }
+
+        table.innerHTML += `
+        <tr>
+            <td>${h.host}</td>
+            <td>${h.cpu.toFixed(1)}</td>
+            <td>${h.ram.toFixed(1)}</td>
+            <td>${h.net_in}</td>
+            <td>${h.net_out}</td>
+            <td><span class="badge ${statusClass}">${statusText}</span></td>
+        </tr>`;
+    });
+
+    // LOG SECTION
+    if (data.logs && data.logs.length !== lastLogCount) {
+        const logBox = document.getElementById("logBox");
+        logBox.innerHTML = "";
+
+        data.logs.reverse().forEach(log => {
+            logBox.innerHTML += `<div class="log-entry">[${log.time}] ${log.message}</div>`;
+        });
+
+        logBox.scrollTop = logBox.scrollHeight;
+        lastLogCount = data.logs.length;
+    }
 }
 
-function updateChart(bf,dd){
-if(chart) chart.destroy();
-
-chart=new Chart(document.getElementById("chart"),{
-type:"bar",
-data:{
-labels:["Bruteforce","DDoS"],
-datasets:[{
-data:[bf,dd],
-backgroundColor:["#ef4444","#8b5cf6"]
-}]
-},
-options:{
-plugins:{legend:{display:false}},
-scales:{
-x:{ticks:{color:"#9ca3af"}},
-y:{ticks:{color:"#9ca3af"}}
-}
-}
-});
-}
-
-load();
-setInterval(load,60000);
+loadData();
+setInterval(loadData, 5000);
 </script>
 
 </body>

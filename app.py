@@ -4,6 +4,8 @@ import requests
 import urllib3
 from datetime import datetime, timedelta
 import pytz
+import threading
+import time
 from config import *
 
 urllib3.disable_warnings()
@@ -29,7 +31,6 @@ def safe_index_create(index_name):
         print("Index create error:", e)
 
 safe_index_create(INDEX_HOST)
-safe_index_create(INDEX_LOG)
 safe_index_create(INDEX_PROBLEM)
 
 # =========================
@@ -80,52 +81,57 @@ def get_hosts():
         return []
 
 # =========================
-# SYNC HOST SAFE
+# BACKGROUND SYNC LOOP
 # =========================
-def sync_hosts():
-    hosts = get_hosts()
-
-    for h in hosts:
+def sync_loop():
+    while True:
         try:
-            cpu = ram = net_in = net_out = 0
-            status = 2
+            hosts = get_hosts()
 
-            interfaces = h.get("interfaces", [])
-            if interfaces:
-                status = int(interfaces[0].get("available", 2))
+            for h in hosts:
+                cpu = ram = net_in = net_out = 0
+                status = 2
 
-            for item in h.get("items", []):
-                name = item.get("name", "").lower()
-                value = item.get("lastvalue", 0)
+                interfaces = h.get("interfaces", [])
+                if interfaces:
+                    status = int(interfaces[0].get("available", 2))
 
-                try:
-                    value = float(value)
-                except:
-                    value = 0
+                for item in h.get("items", []):
+                    name = item.get("name", "").lower()
+                    value = item.get("lastvalue", 0)
 
-                if "cpu" in name:
-                    cpu = value
-                elif "memory" in name:
-                    ram = value
-                elif "incoming" in name:
-                    net_in = value
-                elif "outgoing" in name:
-                    net_out = value
+                    try:
+                        value = float(value)
+                    except:
+                        value = 0
 
-            doc = {
-                "host": h.get("host", "unknown"),
-                "available": status,
-                "cpu": cpu,
-                "ram": ram,
-                "net_in": net_in,
-                "net_out": net_out,
-                "timestamp": datetime.utcnow()
-            }
+                    if "cpu" in name:
+                        cpu = value
+                    elif "memory" in name:
+                        ram = value
+                    elif "incoming" in name:
+                        net_in = value
+                    elif "outgoing" in name:
+                        net_out = value
 
-            es.index(index=INDEX_HOST, id=h.get("hostid"), document=doc)
+                doc = {
+                    "host": h.get("host", "unknown"),
+                    "available": status,
+                    "cpu": cpu,
+                    "ram": ram,
+                    "net_in": net_in,
+                    "net_out": net_out,
+                    "timestamp": datetime.utcnow()
+                }
+
+                es.index(index=INDEX_HOST, id=h.get("hostid"), document=doc)
+
+            print("Host sync OK")
 
         except Exception as e:
-            print("Host sync error:", e)
+            print("Background sync error:", e)
+
+        time.sleep(CACHE_TTL)
 
 # =========================
 # SAFE COUNT
@@ -145,8 +151,6 @@ def safe_count(index_name, body=None):
 # =========================
 @app.route("/api/dashboard")
 def dashboard():
-
-    sync_hosts()
 
     hosts = []
     total = up = down = unknown = 0
@@ -175,11 +179,7 @@ def dashboard():
         print("Host read error:", e)
 
     percent_up = round((up / total) * 100, 2) if total > 0 else 0
-    daily_uptime_percent = percent_up
 
-    # =========================
-    # THREAT COUNTER (24H)
-    # =========================
     now = datetime.utcnow()
     yesterday = now - timedelta(hours=24)
 
@@ -229,7 +229,7 @@ def dashboard():
         "up": up,
         "down": down,
         "unknown": unknown,
-        "daily_uptime": daily_uptime_percent,
+        "daily_uptime": percent_up,
         "hosts": hosts,
         "bruteforce": bruteforce,
         "ddos": ddos,
@@ -241,5 +241,12 @@ def dashboard():
 def index():
     return send_from_directory(".", "index.html")
 
+# =========================
+# START APP
+# =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    thread = threading.Thread(target=sync_loop)
+    thread.daemon = True
+    thread.start()
+
+    app.run(host=APP_HOST, port=APP_PORT, debug=DEBUG)

@@ -9,9 +9,17 @@ ELASTIC_USER = "elastic"
 ELASTIC_PASS = "KhWY4qwz1tTT6U9v7ebL"
 
 INDEX_HOST = "soc-host-monitor"
-INDEX_LOG = "soc-log-monitor"
 INDEX_PROBLEM = "soc-problem-monitor"
 
+# LOG INDEX (filebeat dynamic index)
+INDEX_LOG = ".ds-filebeat-*"
+
 # ================= APP =================
-REFRESH_INTERVAL = 60
+CACHE_TTL = 10
+REFRESH_INTERVAL = 5000  # ms frontend
 TIMEZONE = "Asia/Jakarta"
+
+APP_HOST = "0.0.0.0"
+APP_PORT = 5000
+DEBUG = False
+
