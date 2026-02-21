@@ -4,141 +4,33 @@
 <meta charset="UTF-8">
 <title>Infrastructure Monitoring Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body {
-    margin: 0;
-    font-family: "Segoe UI", Arial, sans-serif;
-    background: #f3f4f6;
-    color: #111827;
-}
-
-.header {
-    background: #111827;
-    color: white;
-    padding: 15px;
-    font-size: 20px;
-    font-weight: bold;
-}
-
-.container {
-    padding: 20px;
-}
-
-.grid-summary {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.card {
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-.card h4 {
-    margin: 0;
-    font-size: 14px;
-    color: #6b7280;
-}
-
-.card h2 {
-    margin: 5px 0 0 0;
-}
-
-.progress-bg {
-    background: #e5e7eb;
-    height: 18px;
-    border-radius: 10px;
-    margin-top: 8px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    background: #16a34a;
-    width: 0%;
-    transition: 0.5s;
-}
-
-.section-title {
-    font-weight: bold;
-    margin-top: 25px;
-    margin-bottom: 10px;
-}
-
-.grid-2 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 20px;
-}
-
-.log-box {
-    background: #111827;
-    color: #e5e7eb;
-    padding: 10px;
-    height: 300px;
-    overflow-y: auto;
-    border-radius: 8px;
-    font-family: monospace;
-    font-size: 13px;
-}
-
-.log-entry {
-    margin-bottom: 5px;
-}
-
-.chart-container {
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-top: 10px;
-}
-
-th, td {
-    padding: 10px;
-    text-align: center;
-}
-
-th {
-    background: #111827;
-    color: white;
-}
-
-tr:nth-child(even) {
-    background: #f9fafb;
-}
-
-.badge {
-    padding: 5px 10px;
-    border-radius: 20px;
-    color: white;
-    font-size: 12px;
-}
-
-.up { background: #16a34a; }
-.down { background: #dc2626; }
-.unknown { background: #f59e0b; }
-
-.footer {
-    margin-top: 20px;
-    font-size: 13px;
-    color: #6b7280;
-}
+body{margin:0;font-family:"Segoe UI",Arial;background:#f3f4f6;color:#111827}
+.header{background:#111827;color:white;padding:15px;font-size:20px;font-weight:bold}
+.header span{float:right;font-size:14px}
+.container{padding:20px}
+.grid-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-bottom:20px}
+.card{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1)}
+.card h4{margin:0;font-size:14px;color:#6b7280}
+.card h2{margin:5px 0 0 0}
+.progress-bg{background:#e5e7eb;height:18px;border-radius:10px;margin-top:8px;overflow:hidden}
+.progress-bar{height:100%;background:#16a34a;width:0%;transition:0.5s}
+.section-title{font-weight:bold;margin-top:25px;margin-bottom:10px}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px}
+.log-box{background:#111827;color:#e5e7eb;padding:10px;height:300px;overflow-y:auto;border-radius:8px;font-family:monospace;font-size:13px}
+.log-entry{margin-bottom:5px}
+.chart-container{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1)}
+table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;margin-top:10px}
+th,td{padding:10px;text-align:center}
+th{background:#111827;color:white}
+tr:nth-child(even){background:#f9fafb}
+.badge{padding:5px 10px;border-radius:20px;color:white;font-size:12px}
+.up{background:#16a34a}
+.down{background:#dc2626}
+.unknown{background:#f59e0b}
+.footer{margin-top:20px;font-size:13px;color:#6b7280}
 </style>
 </head>
 
@@ -146,70 +38,84 @@ tr:nth-child(even) {
 
 <div class="header">
 Infrastructure Monitoring Dashboard
+<span id="realtimeClock"></span>
 </div>
 
 <div class="container">
 
+<!-- SUMMARY -->
 <div class="grid-summary">
-
-    <div class="card">
-        <h4>Total Registered Servers</h4>
-        <h2 id="total">0</h2>
-    </div>
-
-    <div class="card">
-        <h4>Online Servers</h4>
-        <h2 id="up" style="color:#16a34a">0</h2>
-    </div>
-
-    <div class="card">
-        <h4>Offline Servers</h4>
-        <h2 id="down" style="color:#dc2626">0</h2>
-    </div>
-
-    <div class="card">
-        <h4>Unknown Status</h4>
-        <h2 id="unknown" style="color:#f59e0b">0</h2>
-    </div>
-
-    <div class="card">
-        <h4>24h Availability Percentage</h4>
-        <div class="progress-bg">
-            <div class="progress-bar" id="uptimeBar"></div>
-        </div>
-        <h2 id="uptimeText">0%</h2>
-    </div>
-
+<div class="card">
+<h4>Total Registered Servers</h4>
+<h2 id="total">0</h2>
 </div>
 
-<div class="section-title">Security Event Logs (Live)</div>
+<div class="card">
+<h4>Up Servers</h4>
+<h2 id="up" style="color:#16a34a">0</h2>
+</div>
 
-<div class="log-box" id="logBox"></div>
+<div class="card">
+<h4>Down Servers</h4>
+<h2 id="down" style="color:#dc2626">0</h2>
+</div>
 
-<div class="section-title">Security Trend (Last 24 Hours)</div>
+<div class="card">
+<h4>Unknown Status</h4>
+<h2 id="unknown" style="color:#f59e0b">0</h2>
+</div>
 
+<div class="card">
+<h4>24h Availability</h4>
+<div class="progress-bg">
+<div class="progress-bar" id="uptimeBar"></div>
+</div>
+<h2 id="uptimeText">0%</h2>
+</div>
+
+<div class="card">
+<h4>Zabbix Problems (Active)</h4>
+<h2 id="problemCount" style="color:#dc2626">0</h2>
+</div>
+</div>
+
+<!-- LOGS -->
+<div class="section-title">Security Logs</div>
 <div class="grid-2">
-
-    <div class="chart-container">
-        <h4>DDoS Activity Trend (Left Chart)</h4>
-        <canvas id="ddosChart"></canvas>
-    </div>
-
-    <div class="chart-container">
-        <h4>Bruteforce Attempt Trend (Right Chart)</h4>
-        <canvas id="bruteChart"></canvas>
-    </div>
-
+<div>
+<h4>Elasticsearch Logs</h4>
+<div class="log-box" id="elasticLog"></div>
 </div>
 
-<div class="section-title">Server Detail Overview</div>
+<div>
+<h4>Zabbix Problem Log</h4>
+<div class="log-box" id="problemLog"></div>
+</div>
+</div>
 
+<!-- CHART -->
+<div class="section-title">Security Trend (Last 24 Hours)</div>
+<div class="grid-2">
+<div class="chart-container">
+<h4>DDoS Activity</h4>
+<canvas id="ddosChart"></canvas>
+</div>
+
+<div class="chart-container">
+<h4>Bruteforce Attempts</h4>
+<canvas id="bruteChart"></canvas>
+</div>
+</div>
+
+<!-- HOST TABLE -->
+<div class="section-title">Server Detail Overview</div>
 <table>
 <thead>
 <tr>
-<th>Server Name</th>
-<th>CPU Usage (%)</th>
-<th>Memory Usage (%)</th>
+<th>Server</th>
+<th>IP</th>
+<th>CPU (%)</th>
+<th>Memory (%)</th>
 <th>Bandwidth In</th>
 <th>Bandwidth Out</th>
 <th>Status</th>
@@ -225,85 +131,83 @@ Last Updated: <span id="time">-</span>
 </div>
 
 <script>
-let labels = [];
-let bruteData = [];
-let ddosData = [];
-let lastLogCount = 0;
+let labels=[], bruteData=[], ddosData=[], lastLogCount=0;
 
-const bruteChart = new Chart(document.getElementById("bruteChart"), {
-    type: "line",
-    data: { labels: labels, datasets: [{ label: "Bruteforce Attempts", borderColor: "red", data: bruteData }] }
+const bruteChart=new Chart(document.getElementById("bruteChart"),{
+type:"line",
+data:{labels:labels,datasets:[{label:"Bruteforce",borderColor:"red",fill:false,data:bruteData}]}
 });
 
-const ddosChart = new Chart(document.getElementById("ddosChart"), {
-    type: "line",
-    data: { labels: labels, datasets: [{ label: "DDoS Activity", borderColor: "blue", data: ddosData }] }
+const ddosChart=new Chart(document.getElementById("ddosChart"),{
+type:"line",
+data:{labels:labels,datasets:[{label:"DDoS",borderColor:"blue",fill:false,data:ddosData}]}
 });
 
-async function loadData() {
-    const res = await fetch("/api/dashboard");
-    const data = await res.json();
+function updateClock(){
+document.getElementById("realtimeClock").innerText=new Date().toLocaleTimeString();
+}
+setInterval(updateClock,1000);
+updateClock();
 
-    document.getElementById("total").innerText = data.total;
-    document.getElementById("up").innerText = data.up;
-    document.getElementById("down").innerText = data.down;
-    document.getElementById("unknown").innerText = data.unknown;
+async function loadData(){
+const res=await fetch("/api/dashboard");
+const data=await res.json();
 
-    document.getElementById("uptimeText").innerText = data.daily_uptime + "%";
-    document.getElementById("uptimeBar").style.width = data.daily_uptime + "%";
+document.getElementById("total").innerText=data.total;
+document.getElementById("up").innerText=data.up;
+document.getElementById("down").innerText=data.down;
+document.getElementById("unknown").innerText=data.unknown;
+document.getElementById("uptimeText").innerText=data.daily_uptime+"%";
+document.getElementById("uptimeBar").style.width=data.daily_uptime+"%";
+document.getElementById("problemCount").innerText=data.problems;
+document.getElementById("time").innerText=data.time;
 
-    document.getElementById("time").innerText = data.time;
+if(labels.length>50){labels.shift();bruteData.shift();ddosData.shift();}
+labels.push(new Date().toLocaleTimeString());
+bruteData.push(data.bruteforce);
+ddosData.push(data.ddos);
+bruteChart.update();
+ddosChart.update();
 
-    if (labels.length > 10) {
-        labels.shift();
-        bruteData.shift();
-        ddosData.shift();
-    }
+const table=document.getElementById("hostTable");
+table.innerHTML="";
+data.hosts.forEach(h=>{
+let statusClass="unknown",statusText="Unknown";
+if(h.available===1){statusClass="up";statusText="Up";}
+else if(h.available===0){statusClass="down";statusText="Down";}
 
-    labels.push(new Date().toLocaleTimeString());
-    bruteData.push(data.bruteforce);
-    ddosData.push(data.ddos);
+table.innerHTML+=`
+<tr>
+<td>${h.host}</td>
+<td>${h.ip||"-"}</td>
+<td>${Number(h.cpu||0).toFixed(1)}</td>
+<td>${Number(h.ram||0).toFixed(1)}</td>
+<td>${Number(h.net_in||0)}</td>
+<td>${Number(h.net_out||0)}</td>
+<td><span class="badge ${statusClass}">${statusText}</span></td>
+</tr>`;
+});
 
-    bruteChart.update();
-    ddosChart.update();
+// Elastic logs
+if(data.logs && data.logs.length!==lastLogCount){
+let elasticHTML="";
+data.logs.slice().reverse().forEach(log=>{
+elasticHTML+=`<div class="log-entry">[${log.time}] ${log.message}</div>`;
+});
+document.getElementById("elasticLog").innerHTML=elasticHTML;
+document.getElementById("elasticLog").scrollTop=
+document.getElementById("elasticLog").scrollHeight;
 
-    const table = document.getElementById("hostTable");
-    table.innerHTML = "";
+// Problem log (simulasi dari problem count)
+document.getElementById("problemLog").innerHTML=
+`Active Problems: ${data.problems}`;
 
-    data.hosts.forEach(h => {
-        let statusClass = "unknown";
-        let statusText = "Unknown";
-
-        if (h.available === 1) { statusClass = "up"; statusText = "Online"; }
-        else if (h.available === 0) { statusClass = "down"; statusText = "Offline"; }
-
-        table.innerHTML += `
-        <tr>
-            <td>${h.host}</td>
-            <td>${h.cpu.toFixed(1)}</td>
-            <td>${h.ram.toFixed(1)}</td>
-            <td>${h.net_in}</td>
-            <td>${h.net_out}</td>
-            <td><span class="badge ${statusClass}">${statusText}</span></td>
-        </tr>`;
-    });
-
-    // LOG SECTION
-    if (data.logs && data.logs.length !== lastLogCount) {
-        const logBox = document.getElementById("logBox");
-        logBox.innerHTML = "";
-
-        data.logs.reverse().forEach(log => {
-            logBox.innerHTML += `<div class="log-entry">[${log.time}] ${log.message}</div>`;
-        });
-
-        logBox.scrollTop = logBox.scrollHeight;
-        lastLogCount = data.logs.length;
-    }
+lastLogCount=data.logs.length;
+}
 }
 
 loadData();
-setInterval(loadData, 5000);
+setInterval(loadData,5000);
 </script>
 
 </body>

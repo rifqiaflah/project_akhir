@@ -54,7 +54,7 @@ def zabbix_login():
         return None
 
 # =========================
-# GET HOST
+# GET HOST FROM ZABBIX
 # =========================
 def get_hosts():
     token = zabbix_login()
@@ -67,7 +67,7 @@ def get_hosts():
             "method": "host.get",
             "params": {
                 "output": ["hostid", "host"],
-                "selectInterfaces": ["available"],
+                "selectInterfaces": ["available", "ip"],
                 "selectItems": ["name", "lastvalue"]
             },
             "auth": token,
@@ -91,10 +91,12 @@ def sync_loop():
             for h in hosts:
                 cpu = ram = net_in = net_out = 0
                 status = 2
+                ip = "-"
 
                 interfaces = h.get("interfaces", [])
                 if interfaces:
                     status = int(interfaces[0].get("available", 2))
+                    ip = interfaces[0].get("ip", "-")
 
                 for item in h.get("items", []):
                     name = item.get("name", "").lower()
@@ -116,6 +118,7 @@ def sync_loop():
 
                 doc = {
                     "host": h.get("host", "unknown"),
+                    "ip": ip,
                     "available": status,
                     "cpu": cpu,
                     "ram": ram,
@@ -145,6 +148,29 @@ def safe_count(index_name, body=None):
     except:
         pass
     return 0
+
+# =========================
+# GET LOGS
+# =========================
+def get_logs():
+    logs = []
+    try:
+        if es.indices.exists(index=INDEX_LOG):
+            result = es.search(
+                index=INDEX_LOG,
+                size=50,
+                sort=[{"@timestamp": {"order": "desc"}}]
+            )
+            for h in result.get("hits", {}).get("hits", []):
+                src = h.get("_source", {})
+                logs.append({
+                    "time": src.get("@timestamp", ""),
+                    "message": src.get("message", "")
+                })
+    except Exception as e:
+        print("Log fetch error:", e)
+
+    return logs
 
 # =========================
 # DASHBOARD API
@@ -217,6 +243,7 @@ def dashboard():
     bruteforce = safe_count(INDEX_LOG, bruteforce_query)
     ddos = safe_count(INDEX_LOG, ddos_query)
     problems = safe_count(INDEX_PROBLEM)
+    logs = get_logs()
 
     try:
         tz = pytz.timezone(TIMEZONE)
@@ -234,6 +261,7 @@ def dashboard():
         "bruteforce": bruteforce,
         "ddos": ddos,
         "problems": problems,
+        "logs": logs,
         "time": local_time
     })
 
