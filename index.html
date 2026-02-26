@@ -28,7 +28,8 @@ tr:nth-child(even){background:#f9fafb}
 .up{background:#16a34a}
 .down{background:#dc2626}
 .unknown{background:#f59e0b}
-.alert{background:#dc2626;color:white;padding:6px 12px;border-radius:20px;font-size:12px;display:inline-block;margin-left:10px}
+.alert{background:#dc2626;color:white;padding:6px 12px;border-radius:20px;font-size:12px;display:inline-block;margin-left:10px;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:0.4}}
 .footer{margin-top:20px;font-size:13px;color:#6b7280}
 </style>
 </head>
@@ -55,19 +56,31 @@ Infrastructure Monitoring Dashboard
 </div>
 
 <div class="section-title">
-Security Logs 
+Security Logs
 <span id="ddosAlert"></span>
 </div>
 
 <div class="grid-2">
-<div><h4>Elasticsearch Logs</h4><div class="log-box" id="elasticLog"></div></div>
-<div><h4>Zabbix Problem Log</h4><div class="log-box" id="problemLog">Monitoring Active...</div></div>
+<div>
+<h4>Elasticsearch Logs</h4>
+<div class="log-box" id="elasticLog"></div>
+</div>
+<div>
+<h4>Zabbix Problem Log</h4>
+<div class="log-box" id="problemLog">Monitoring Active...</div>
+</div>
 </div>
 
 <div class="section-title">Security Trend (Realtime)</div>
 <div class="grid-2">
-<div class="chart-container"><h4>DDoS Activity</h4><canvas id="ddosChart"></canvas></div>
-<div class="chart-container"><h4>Bruteforce Attempts</h4><canvas id="bruteChart"></canvas></div>
+<div class="chart-container">
+<h4>DDoS Activity</h4>
+<canvas id="ddosChart"></canvas>
+</div>
+<div class="chart-container">
+<h4>Bruteforce Attempts</h4>
+<canvas id="bruteChart"></canvas>
+</div>
 </div>
 
 <div class="section-title">Server Detail Overview</div>
@@ -159,7 +172,7 @@ ddosData.push(data.ddos||0);
 bruteChart.update();
 ddosChart.update();
 
-/* ===== DDOS ALERT INDICATOR ===== */
+/* ===== DDOS ALERT ===== */
 const alertBox=document.getElementById("ddosAlert");
 if(data.ddos>0){
 alertBox.innerHTML='<span class="alert">DDoS DETECTED</span>';
@@ -170,6 +183,7 @@ alertBox.innerHTML='';
 /* ===== Host Table ===== */
 let table="";
 data.hosts.forEach(h=>{
+
 let statusClass="unknown",statusText="Unknown";
 
 if(Number(h.available)===1){
@@ -184,11 +198,12 @@ table+=`
 <td>${h.ip||"-"}</td>
 <td>${Number(h.cpu||0).toFixed(1)}</td>
 <td>${Number(h.ram||0).toFixed(1)}</td>
-<td>${Number(h.net_in||0)}</td>
-<td>${Number(h.net_out||0)}</td>
+<td>${Number(h.net_in||0).toFixed(2)} ${h.net_in_unit||""}</td>
+<td>${Number(h.net_out||0).toFixed(2)} ${h.net_out_unit||""}</td>
 <td><span class="badge ${statusClass}">${statusText}</span></td>
 </tr>`;
 });
+
 document.getElementById("hostTable").innerHTML=table;
 
 /* ===== Logs ===== */

@@ -34,6 +34,24 @@ safe_index_create(INDEX_HOST)
 safe_index_create(INDEX_PROBLEM)
 
 # =========================
+# FORMAT BANDWIDTH AUTO UNIT
+# =========================
+def format_bandwidth(value):
+    try:
+        value = float(value)
+
+        if value >= 1_000_000_000:
+            return round(value / 1_000_000_000, 2), "Gbps"
+        elif value >= 1_000_000:
+            return round(value / 1_000_000, 2), "Mbps"
+        elif value >= 1_000:
+            return round(value / 1_000, 2), "Kbps"
+        else:
+            return round(value, 2), "bps"
+    except:
+        return 0, "bps"
+
+# =========================
 # ZABBIX LOGIN
 # =========================
 def zabbix_login():
@@ -53,7 +71,7 @@ def zabbix_login():
         return None
 
 # =========================
-# GET HOST FROM ZABBIX
+# GET HOSTS
 # =========================
 def get_hosts():
     token = zabbix_login()
@@ -102,10 +120,8 @@ def sync_loop():
                     except:
                         value = 0
 
-                    # ===== FIX STATUS FROM ZABBIX KEY =====
                     if key == "zabbix[host,agent,available]":
                         status = int(value)
-
                     elif "cpu" in name:
                         cpu = value
                     elif "memory" in name:
@@ -136,7 +152,7 @@ def sync_loop():
         time.sleep(CACHE_TTL)
 
 # =========================
-# GET REALTIME LOGS
+# GET LOGS
 # =========================
 def get_logs():
     logs = []
@@ -145,13 +161,7 @@ def get_logs():
             index=INDEX_LOG,
             size=50,
             sort=[{"@timestamp": {"order": "desc"}}],
-            query={
-                "range": {
-                    "@timestamp": {
-                        "gte": "now-24h"
-                    }
-                }
-            }
+            query={"range": {"@timestamp": {"gte": "now-24h"}}}
         )
 
         for h in result.get("hits", {}).get("hits", []):
@@ -162,7 +172,6 @@ def get_logs():
             })
     except:
         pass
-
     return logs
 
 # =========================
@@ -195,13 +204,20 @@ def dashboard():
         for h in result.get("hits", {}).get("hits", []):
             data = h.get("_source", {})
             host_name = data.get("host")
-
             if host_name not in latest_hosts:
                 latest_hosts[host_name] = data
 
-        hosts = list(latest_hosts.values())
+        for h in latest_hosts.values():
+            net_in_value, net_in_unit = format_bandwidth(h.get("net_in", 0))
+            net_out_value, net_out_unit = format_bandwidth(h.get("net_out", 0))
 
-        for h in hosts:
+            h["net_in"] = net_in_value
+            h["net_in_unit"] = net_in_unit
+            h["net_out"] = net_out_value
+            h["net_out_unit"] = net_out_unit
+
+            hosts.append(h)
+
             status = int(h.get("available", 2))
             if status == 1:
                 up += 1
@@ -216,15 +232,10 @@ def dashboard():
     total = len(hosts)
     percent_up = round((up / total) * 100, 2) if total else 0
 
-    # =========================
-    # BRUTEFORCE (AUTH LOG ONLY)
-    # =========================
     bruteforce_query = {
         "query": {
             "bool": {
-                "must": [
-                    {"range": {"@timestamp": {"gte": "now-5m"}}}
-                ],
+                "must": [{"range": {"@timestamp": {"gte": "now-5m"}}}],
                 "should": [
                     {"match_phrase": {"message": "Failed password"}},
                     {"match_phrase": {"message": "authentication failure"}},
@@ -238,21 +249,11 @@ def dashboard():
 
     bruteforce = safe_count(INDEX_LOG, bruteforce_query)
 
-    # =========================
-    # DDOS (SPIKE BASED)
-    # =========================
     traffic_query = {
-        "query": {
-            "range": {
-                "@timestamp": {
-                    "gte": "now-1m"
-                }
-            }
-        }
+        "query": {"range": {"@timestamp": {"gte": "now-1m"}}}
     }
 
     request_count = safe_count(INDEX_LOG, traffic_query)
-
     DDOS_THRESHOLD = 200
     ddos = request_count if request_count > DDOS_THRESHOLD else 0
 
@@ -278,9 +279,6 @@ def dashboard():
 def index():
     return send_from_directory(".", "index.html")
 
-# =========================
-# START
-# =========================
 if __name__ == "__main__":
     thread = threading.Thread(target=sync_loop)
     thread.daemon = True
