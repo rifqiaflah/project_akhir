@@ -12,17 +12,15 @@ body{margin:0;font-family:"Segoe UI",Arial;background:#f3f4f6;color:#111827}
 .header span{float:right;font-size:14px}
 .container{padding:20px}
 .grid-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-bottom:20px}
-.card{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1)}
-.card h4{margin:0;font-size:14px;color:#6b7280}
-.card h2{margin:5px 0 0 0}
+.card{background:white;padding:15px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);transition:.3s}
+.card:hover{transform:translateY(-4px)}
 .progress-bg{background:#e5e7eb;height:18px;border-radius:10px;margin-top:8px;overflow:hidden}
-.progress-bar{height:100%;background:#16a34a;width:0%;transition:0.5s}
+.progress-bar{height:100%;background:#16a34a;width:0%;transition:width 1s ease}
 .section-title{font-weight:bold;margin-top:25px;margin-bottom:10px}
 .grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px}
-.log-box{background:#111827;color:#e5e7eb;padding:10px;height:300px;overflow-y:auto;border-radius:8px;font-family:monospace;font-size:13px}
-.log-entry{margin-bottom:5px}
-.chart-container{background:white;padding:15px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1)}
-table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;margin-top:10px}
+.log-box{background:#0f172a;color:#e5e7eb;padding:10px;height:300px;overflow-y:auto;border-radius:8px;font-family:monospace;font-size:13px}
+.chart-container{background:white;padding:15px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08)}
+table{width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;margin-top:10px}
 th,td{padding:10px;text-align:center}
 th{background:#111827;color:white}
 tr:nth-child(even){background:#f9fafb}
@@ -30,6 +28,7 @@ tr:nth-child(even){background:#f9fafb}
 .up{background:#16a34a}
 .down{background:#dc2626}
 .unknown{background:#f59e0b}
+.alert{background:#dc2626;color:white;padding:6px 12px;border-radius:20px;font-size:12px;display:inline-block;margin-left:10px}
 .footer{margin-top:20px;font-size:13px;color:#6b7280}
 </style>
 </head>
@@ -43,71 +42,34 @@ Infrastructure Monitoring Dashboard
 
 <div class="container">
 
-<!-- SUMMARY -->
 <div class="grid-summary">
-<div class="card">
-<h4>Total Registered Servers</h4>
-<h2 id="total">0</h2>
-</div>
-
-<div class="card">
-<h4>Up Servers</h4>
-<h2 id="up" style="color:#16a34a">0</h2>
-</div>
-
-<div class="card">
-<h4>Down Servers</h4>
-<h2 id="down" style="color:#dc2626">0</h2>
-</div>
-
-<div class="card">
-<h4>Unknown Status</h4>
-<h2 id="unknown" style="color:#f59e0b">0</h2>
-</div>
-
+<div class="card"><h4>Total Servers</h4><h2 id="total">0</h2></div>
+<div class="card"><h4>Up</h4><h2 id="up" style="color:#16a34a">0</h2></div>
+<div class="card"><h4>Down</h4><h2 id="down" style="color:#dc2626">0</h2></div>
+<div class="card"><h4>Unknown</h4><h2 id="unknown" style="color:#f59e0b">0</h2></div>
 <div class="card">
 <h4>24h Availability</h4>
-<div class="progress-bg">
-<div class="progress-bar" id="uptimeBar"></div>
-</div>
+<div class="progress-bg"><div class="progress-bar" id="uptimeBar"></div></div>
 <h2 id="uptimeText">0%</h2>
 </div>
-
-<div class="card">
-<h4>Zabbix Problems (Active)</h4>
-<h2 id="problemCount" style="color:#dc2626">0</h2>
-</div>
 </div>
 
-<!-- LOGS -->
-<div class="section-title">Security Logs</div>
+<div class="section-title">
+Security Logs 
+<span id="ddosAlert"></span>
+</div>
+
 <div class="grid-2">
-<div>
-<h4>Elasticsearch Logs</h4>
-<div class="log-box" id="elasticLog"></div>
+<div><h4>Elasticsearch Logs</h4><div class="log-box" id="elasticLog"></div></div>
+<div><h4>Zabbix Problem Log</h4><div class="log-box" id="problemLog">Monitoring Active...</div></div>
 </div>
 
-<div>
-<h4>Zabbix Problem Log</h4>
-<div class="log-box" id="problemLog"></div>
-</div>
-</div>
-
-<!-- CHART -->
-<div class="section-title">Security Trend (Last 24 Hours)</div>
+<div class="section-title">Security Trend (Realtime)</div>
 <div class="grid-2">
-<div class="chart-container">
-<h4>DDoS Activity</h4>
-<canvas id="ddosChart"></canvas>
+<div class="chart-container"><h4>DDoS Activity</h4><canvas id="ddosChart"></canvas></div>
+<div class="chart-container"><h4>Bruteforce Attempts</h4><canvas id="bruteChart"></canvas></div>
 </div>
 
-<div class="chart-container">
-<h4>Bruteforce Attempts</h4>
-<canvas id="bruteChart"></canvas>
-</div>
-</div>
-
-<!-- HOST TABLE -->
 <div class="section-title">Server Detail Overview</div>
 <table>
 <thead>
@@ -124,32 +86,54 @@ Infrastructure Monitoring Dashboard
 <tbody id="hostTable"></tbody>
 </table>
 
-<div class="footer">
-Last Updated: <span id="time">-</span>
-</div>
+<div class="footer">Last Updated: <span id="time">-</span></div>
 
 </div>
 
 <script>
-let labels=[], bruteData=[], ddosData=[], lastLogCount=0;
+
+let labels=[], bruteData=[], ddosData=[];
+const MAX_POINTS=30;
 
 const bruteChart=new Chart(document.getElementById("bruteChart"),{
 type:"line",
-data:{labels:labels,datasets:[{label:"Bruteforce",borderColor:"red",fill:false,data:bruteData}]}
+data:{
+labels:labels,
+datasets:[{
+label:"Bruteforce",
+data:bruteData,
+borderColor:"red",
+backgroundColor:"rgba(255,0,0,0.1)",
+fill:true,
+tension:0.4
+}]
+},
+options:{animation:{duration:600}}
 });
 
 const ddosChart=new Chart(document.getElementById("ddosChart"),{
 type:"line",
-data:{labels:labels,datasets:[{label:"DDoS",borderColor:"blue",fill:false,data:ddosData}]}
+data:{
+labels:labels,
+datasets:[{
+label:"DDoS",
+data:ddosData,
+borderColor:"blue",
+backgroundColor:"rgba(0,0,255,0.1)",
+fill:true,
+tension:0.4
+}]
+},
+options:{animation:{duration:600}}
 });
 
 function updateClock(){
 document.getElementById("realtimeClock").innerText=new Date().toLocaleTimeString();
 }
 setInterval(updateClock,1000);
-updateClock();
 
 async function loadData(){
+try{
 const res=await fetch("/api/dashboard");
 const data=await res.json();
 
@@ -159,24 +143,42 @@ document.getElementById("down").innerText=data.down;
 document.getElementById("unknown").innerText=data.unknown;
 document.getElementById("uptimeText").innerText=data.daily_uptime+"%";
 document.getElementById("uptimeBar").style.width=data.daily_uptime+"%";
-document.getElementById("problemCount").innerText=data.problems;
 document.getElementById("time").innerText=data.time;
 
-if(labels.length>50){labels.shift();bruteData.shift();ddosData.shift();}
+/* ===== Smooth Sliding Chart ===== */
+if(labels.length>=MAX_POINTS){
+labels.shift();
+bruteData.shift();
+ddosData.shift();
+}
+
 labels.push(new Date().toLocaleTimeString());
-bruteData.push(data.bruteforce);
-ddosData.push(data.ddos);
+bruteData.push(data.bruteforce||0);
+ddosData.push(data.ddos||0);
+
 bruteChart.update();
 ddosChart.update();
 
-const table=document.getElementById("hostTable");
-table.innerHTML="";
+/* ===== DDOS ALERT INDICATOR ===== */
+const alertBox=document.getElementById("ddosAlert");
+if(data.ddos>0){
+alertBox.innerHTML='<span class="alert">DDoS DETECTED</span>';
+}else{
+alertBox.innerHTML='';
+}
+
+/* ===== Host Table ===== */
+let table="";
 data.hosts.forEach(h=>{
 let statusClass="unknown",statusText="Unknown";
-if(h.available===1){statusClass="up";statusText="Up";}
-else if(h.available===0){statusClass="down";statusText="Down";}
 
-table.innerHTML+=`
+if(Number(h.available)===1){
+statusClass="up";statusText="Up";
+}else if(Number(h.available)===0){
+statusClass="down";statusText="Down";
+}
+
+table+=`
 <tr>
 <td>${h.host}</td>
 <td>${h.ip||"-"}</td>
@@ -187,27 +189,25 @@ table.innerHTML+=`
 <td><span class="badge ${statusClass}">${statusText}</span></td>
 </tr>`;
 });
+document.getElementById("hostTable").innerHTML=table;
 
-// Elastic logs
-if(data.logs && data.logs.length!==lastLogCount){
+/* ===== Logs ===== */
 let elasticHTML="";
 data.logs.slice().reverse().forEach(log=>{
-elasticHTML+=`<div class="log-entry">[${log.time}] ${log.message}</div>`;
+elasticHTML+=`<div>[${log.time}] ${log.message}</div>`;
 });
-document.getElementById("elasticLog").innerHTML=elasticHTML;
-document.getElementById("elasticLog").scrollTop=
-document.getElementById("elasticLog").scrollHeight;
+const elasticBox=document.getElementById("elasticLog");
+elasticBox.innerHTML=elasticHTML;
+elasticBox.scrollTop=elasticBox.scrollHeight;
 
-// Problem log (simulasi dari problem count)
-document.getElementById("problemLog").innerHTML=
-`Active Problems: ${data.problems}`;
-
-lastLogCount=data.logs.length;
+}catch(e){
+console.log("Dashboard error:",e);
 }
 }
 
 loadData();
-setInterval(loadData,5000);
+setInterval(loadData,2000);
+
 </script>
 
 </body>

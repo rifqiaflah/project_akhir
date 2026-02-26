@@ -2,7 +2,7 @@ from flask import Flask, jsonify, send_from_directory
 from elasticsearch import Elasticsearch
 import requests
 import urllib3
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 import threading
 import time
@@ -49,8 +49,7 @@ def zabbix_login():
         }
         r = requests.post(ZABBIX_URL, json=payload, timeout=10)
         return r.json().get("result")
-    except Exception as e:
-        print("Zabbix login error:", e)
+    except:
         return None
 
 # =========================
@@ -61,24 +60,20 @@ def get_hosts():
     if not token:
         return []
 
-    try:
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "host.get",
-            "params": {
-                "output": ["hostid", "host"],
-                "selectInterfaces": ["available", "ip"],
-                "selectItems": ["name", "lastvalue"]
-            },
-            "auth": token,
-            "id": 2
-        }
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "host.get",
+        "params": {
+            "output": ["hostid", "host"],
+            "selectInterfaces": ["available", "ip"],
+            "selectItems": ["name", "key_", "lastvalue"]
+        },
+        "auth": token,
+        "id": 2
+    }
 
-        r = requests.post(ZABBIX_URL, json=payload, timeout=15)
-        return r.json().get("result", [])
-    except Exception as e:
-        print("Zabbix host error:", e)
-        return []
+    r = requests.post(ZABBIX_URL, json=payload, timeout=15)
+    return r.json().get("result", [])
 
 # =========================
 # BACKGROUND SYNC LOOP
@@ -95,11 +90,11 @@ def sync_loop():
 
                 interfaces = h.get("interfaces", [])
                 if interfaces:
-                    status = int(interfaces[0].get("available", 2))
                     ip = interfaces[0].get("ip", "-")
 
                 for item in h.get("items", []):
                     name = item.get("name", "").lower()
+                    key = item.get("key_", "")
                     value = item.get("lastvalue", 0)
 
                     try:
@@ -107,14 +102,18 @@ def sync_loop():
                     except:
                         value = 0
 
-                    if "cpu" in name:
+                    # ===== FIX STATUS FROM ZABBIX KEY =====
+                    if key == "zabbix[host,agent,available]":
+                        status = int(value)
+
+                    elif "cpu" in name:
                         cpu = value
                     elif "memory" in name:
                         ram = value
-                    elif "incoming" in name:
-                        net_in = value
-                    elif "outgoing" in name:
-                        net_out = value
+                    elif "net.if.in" in key:
+                        net_in += value
+                    elif "net.if.out" in key:
+                        net_out += value
 
                 doc = {
                     "host": h.get("host", "unknown"),
@@ -132,45 +131,48 @@ def sync_loop():
             print("Host sync OK")
 
         except Exception as e:
-            print("Background sync error:", e)
+            print("Sync error:", e)
 
         time.sleep(CACHE_TTL)
 
 # =========================
-# SAFE COUNT
-# =========================
-def safe_count(index_name, body=None):
-    try:
-        if es.indices.exists(index=index_name):
-            if body:
-                return es.count(index=index_name, body=body)["count"]
-            return es.count(index=index_name)["count"]
-    except:
-        pass
-    return 0
-
-# =========================
-# GET LOGS
+# GET REALTIME LOGS
 # =========================
 def get_logs():
     logs = []
     try:
-        if es.indices.exists(index=INDEX_LOG):
-            result = es.search(
-                index=INDEX_LOG,
-                size=50,
-                sort=[{"@timestamp": {"order": "desc"}}]
-            )
-            for h in result.get("hits", {}).get("hits", []):
-                src = h.get("_source", {})
-                logs.append({
-                    "time": src.get("@timestamp", ""),
-                    "message": src.get("message", "")
-                })
-    except Exception as e:
-        print("Log fetch error:", e)
+        result = es.search(
+            index=INDEX_LOG,
+            size=50,
+            sort=[{"@timestamp": {"order": "desc"}}],
+            query={
+                "range": {
+                    "@timestamp": {
+                        "gte": "now-24h"
+                    }
+                }
+            }
+        )
+
+        for h in result.get("hits", {}).get("hits", []):
+            src = h.get("_source", {})
+            logs.append({
+                "time": src.get("@timestamp", "")[:19],
+                "message": src.get("message", "")
+            })
+    except:
+        pass
 
     return logs
+
+# =========================
+# SAFE COUNT
+# =========================
+def safe_count(index_name, body):
+    try:
+        return es.count(index=index_name, body=body)["count"]
+    except:
+        return 0
 
 # =========================
 # DASHBOARD API
@@ -179,77 +181,85 @@ def get_logs():
 def dashboard():
 
     hosts = []
-    total = up = down = unknown = 0
+    up = down = unknown = 0
 
     try:
-        if es.indices.exists(index=INDEX_HOST):
-            result = es.search(index=INDEX_HOST, size=1000)
-            hits = result.get("hits", {}).get("hits", [])
+        result = es.search(
+            index=INDEX_HOST,
+            size=1000,
+            sort=[{"timestamp": {"order": "desc"}}]
+        )
 
-            for h in hits:
-                data = h.get("_source", {})
-                status = data.get("available", 2)
+        latest_hosts = {}
 
-                if status == 1:
-                    up += 1
-                elif status == 0:
-                    down += 1
-                else:
-                    unknown += 1
+        for h in result.get("hits", {}).get("hits", []):
+            data = h.get("_source", {})
+            host_name = data.get("host")
 
-                hosts.append(data)
+            if host_name not in latest_hosts:
+                latest_hosts[host_name] = data
 
-            total = len(hits)
+        hosts = list(latest_hosts.values())
 
-    except Exception as e:
-        print("Host read error:", e)
+        for h in hosts:
+            status = int(h.get("available", 2))
+            if status == 1:
+                up += 1
+            elif status == 0:
+                down += 1
+            else:
+                unknown += 1
 
-    percent_up = round((up / total) * 100, 2) if total > 0 else 0
+    except:
+        pass
 
-    now = datetime.utcnow()
-    yesterday = now - timedelta(hours=24)
+    total = len(hosts)
+    percent_up = round((up / total) * 100, 2) if total else 0
 
-    time_filter = {
-        "range": {
-            "@timestamp": {
-                "gte": yesterday.isoformat(),
-                "lte": now.isoformat()
-            }
-        }
-    }
-
+    # =========================
+    # BRUTEFORCE (AUTH LOG ONLY)
+    # =========================
     bruteforce_query = {
         "query": {
             "bool": {
-                "must": [time_filter],
+                "must": [
+                    {"range": {"@timestamp": {"gte": "now-5m"}}}
+                ],
                 "should": [
-                    {"wildcard": {"message": "*Failed password*"}},
-                    {"wildcard": {"message": "*authentication failure*"}}
+                    {"match_phrase": {"message": "Failed password"}},
+                    {"match_phrase": {"message": "authentication failure"}},
+                    {"match_phrase": {"message": "Invalid user"}},
+                    {"match_phrase": {"message": "Failed publickey"}}
                 ],
                 "minimum_should_match": 1
             }
         }
     }
 
-    ddos_query = {
+    bruteforce = safe_count(INDEX_LOG, bruteforce_query)
+
+    # =========================
+    # DDOS (SPIKE BASED)
+    # =========================
+    traffic_query = {
         "query": {
-            "bool": {
-                "must": [time_filter],
-                "filter": [{"match": {"message": "HTTP"}}]
+            "range": {
+                "@timestamp": {
+                    "gte": "now-1m"
+                }
             }
         }
     }
 
-    bruteforce = safe_count(INDEX_LOG, bruteforce_query)
-    ddos = safe_count(INDEX_LOG, ddos_query)
-    problems = safe_count(INDEX_PROBLEM)
+    request_count = safe_count(INDEX_LOG, traffic_query)
+
+    DDOS_THRESHOLD = 200
+    ddos = request_count if request_count > DDOS_THRESHOLD else 0
+
     logs = get_logs()
 
-    try:
-        tz = pytz.timezone(TIMEZONE)
-        local_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-    except:
-        local_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    tz = pytz.timezone(TIMEZONE)
+    local_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
 
     return jsonify({
         "total": total,
@@ -260,7 +270,6 @@ def dashboard():
         "hosts": hosts,
         "bruteforce": bruteforce,
         "ddos": ddos,
-        "problems": problems,
         "logs": logs,
         "time": local_time
     })
@@ -270,7 +279,7 @@ def index():
     return send_from_directory(".", "index.html")
 
 # =========================
-# START APP
+# START
 # =========================
 if __name__ == "__main__":
     thread = threading.Thread(target=sync_loop)
