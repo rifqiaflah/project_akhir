@@ -21,25 +21,49 @@ es = Elasticsearch(
 )
 
 # =========================
-# SAFE INDEX CREATE
+# SAFE INDEX CREATE (MINIMAL MAPPING)
 # =========================
-def safe_index_create(index_name):
+def safe_index_create(index_name, mapping):
     try:
         if not es.indices.exists(index=index_name):
-            es.indices.create(index=index_name)
+            es.indices.create(
+                index=index_name,
+                mappings=mapping
+            )
+            print(f"Index {index_name} created")
     except Exception as e:
         print("Index create error:", e)
 
-safe_index_create(INDEX_HOST)
-safe_index_create(INDEX_PROBLEM)
+
+safe_index_create(INDEX_HOST, {
+    "properties": {
+        "host": {"type": "keyword"},
+        "ip": {"type": "ip"},
+        "available": {"type": "integer"},
+        "cpu": {"type": "float"},
+        "ram": {"type": "float"},
+        "net_in": {"type": "float"},
+        "net_out": {"type": "float"},
+        "timestamp": {"type": "date"}
+    }
+})
+
+safe_index_create(INDEX_PROBLEM, {
+    "properties": {
+        "eventid": {"type": "keyword"},
+        "host": {"type": "keyword"},
+        "name": {"type": "text"},
+        "severity": {"type": "integer"},
+        "timestamp": {"type": "date"}
+    }
+})
 
 # =========================
-# FORMAT BANDWIDTH AUTO UNIT
+# FORMAT BANDWIDTH
 # =========================
 def format_bandwidth(value):
     try:
         value = float(value)
-
         if value >= 1_000_000_000:
             return round(value / 1_000_000_000, 2), "Gbps"
         elif value >= 1_000_000:
@@ -65,7 +89,7 @@ def zabbix_login():
             },
             "id": 1
         }
-        r = requests.post(ZABBIX_URL, json=payload, timeout=10)
+        r = requests.post(ZABBIX_URL, json=payload, timeout=(5, 20))
         return r.json().get("result")
     except:
         return None
@@ -84,14 +108,43 @@ def get_hosts():
         "params": {
             "output": ["hostid", "host"],
             "selectInterfaces": ["available", "ip"],
-            "selectItems": ["name", "key_", "lastvalue"]
+            "selectItems": ["key_", "lastvalue"]
         },
         "auth": token,
         "id": 2
     }
 
-    r = requests.post(ZABBIX_URL, json=payload, timeout=15)
-    return r.json().get("result", [])
+    try:
+        r = requests.post(ZABBIX_URL, json=payload, timeout=(5, 20))
+        return r.json().get("result", [])
+    except:
+        return []
+
+# =========================
+# GET PROBLEMS
+# =========================
+def get_problems():
+    token = zabbix_login()
+    if not token:
+        return []
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "problem.get",
+        "params": {
+            "output": ["eventid", "name", "severity", "clock"],
+            "selectHosts": ["host"],
+            "recent": True
+        },
+        "auth": token,
+        "id": 3
+    }
+
+    try:
+        r = requests.post(ZABBIX_URL, json=payload, timeout=(5, 20))
+        return r.json().get("result", [])
+    except:
+        return []
 
 # =========================
 # BACKGROUND SYNC LOOP
@@ -111,7 +164,6 @@ def sync_loop():
                     ip = interfaces[0].get("ip", "-")
 
                 for item in h.get("items", []):
-                    name = item.get("name", "").lower()
                     key = item.get("key_", "")
                     value = item.get("lastvalue", 0)
 
@@ -122,9 +174,9 @@ def sync_loop():
 
                     if key == "zabbix[host,agent,available]":
                         status = int(value)
-                    elif "cpu" in name:
+                    elif "cpu" in key:
                         cpu = value
-                    elif "memory" in name:
+                    elif "memory" in key:
                         ram = value
                     elif "net.if.in" in key:
                         net_in += value
@@ -142,46 +194,38 @@ def sync_loop():
                     "timestamp": datetime.utcnow()
                 }
 
-                es.index(index=INDEX_HOST, id=h.get("hostid"), document=doc)
+                es.update(
+                    index=INDEX_HOST,
+                    id=h.get("hostid"),
+                    doc=doc,
+                    doc_as_upsert=True
+                )
 
-            print("Host sync OK")
+            # SYNC PROBLEMS
+            problems = get_problems()
+            for p in problems:
+                doc = {
+                    "eventid": p.get("eventid"),
+                    "host": p["hosts"][0]["host"] if p.get("hosts") else "-",
+                    "name": p.get("name"),
+                    "severity": int(p.get("severity", 0)),
+                    "timestamp": datetime.utcfromtimestamp(int(p.get("clock", 0)))
+                }
+
+                es.update(
+                    index=INDEX_PROBLEM,
+                    id=p.get("eventid"),
+                    doc=doc,
+                    doc_as_upsert=True
+                )
+
+            print("Sync OK")
 
         except Exception as e:
             print("Sync error:", e)
+            time.sleep(10)
 
         time.sleep(CACHE_TTL)
-
-# =========================
-# GET LOGS
-# =========================
-def get_logs():
-    logs = []
-    try:
-        result = es.search(
-            index=INDEX_LOG,
-            size=50,
-            sort=[{"@timestamp": {"order": "desc"}}],
-            query={"range": {"@timestamp": {"gte": "now-24h"}}}
-        )
-
-        for h in result.get("hits", {}).get("hits", []):
-            src = h.get("_source", {})
-            logs.append({
-                "time": src.get("@timestamp", "")[:19],
-                "message": src.get("message", "")
-            })
-    except:
-        pass
-    return logs
-
-# =========================
-# SAFE COUNT
-# =========================
-def safe_count(index_name, body):
-    try:
-        return es.count(index=index_name, body=body)["count"]
-    except:
-        return 0
 
 # =========================
 # DASHBOARD API
@@ -195,30 +239,23 @@ def dashboard():
     try:
         result = es.search(
             index=INDEX_HOST,
-            size=1000,
-            sort=[{"timestamp": {"order": "desc"}}]
+            size=1000
         )
-
-        latest_hosts = {}
 
         for h in result.get("hits", {}).get("hits", []):
             data = h.get("_source", {})
-            host_name = data.get("host")
-            if host_name not in latest_hosts:
-                latest_hosts[host_name] = data
 
-        for h in latest_hosts.values():
-            net_in_value, net_in_unit = format_bandwidth(h.get("net_in", 0))
-            net_out_value, net_out_unit = format_bandwidth(h.get("net_out", 0))
+            net_in_value, net_in_unit = format_bandwidth(data.get("net_in", 0))
+            net_out_value, net_out_unit = format_bandwidth(data.get("net_out", 0))
 
-            h["net_in"] = net_in_value
-            h["net_in_unit"] = net_in_unit
-            h["net_out"] = net_out_value
-            h["net_out_unit"] = net_out_unit
+            data["net_in"] = net_in_value
+            data["net_in_unit"] = net_in_unit
+            data["net_out"] = net_out_value
+            data["net_out_unit"] = net_out_unit
 
-            hosts.append(h)
+            hosts.append(data)
 
-            status = int(h.get("available", 2))
+            status = int(data.get("available", 2))
             if status == 1:
                 up += 1
             elif status == 0:
@@ -229,35 +266,25 @@ def dashboard():
     except:
         pass
 
-    total = len(hosts)
-    percent_up = round((up / total) * 100, 2) if total else 0
+    # TOTAL SEMUA SERVER
+    total = up + down + unknown
 
-    bruteforce_query = {
-        "query": {
-            "bool": {
-                "must": [{"range": {"@timestamp": {"gte": "now-5m"}}}],
-                "should": [
-                    {"match_phrase": {"message": "Failed password"}},
-                    {"match_phrase": {"message": "authentication failure"}},
-                    {"match_phrase": {"message": "Invalid user"}},
-                    {"match_phrase": {"message": "Failed publickey"}}
-                ],
-                "minimum_should_match": 1
-            }
-        }
-    }
+    # PERSENTASE HANYA UP VS DOWN
+    total_for_percentage = up + down
+    percent_up = round((up / total_for_percentage) * 100, 2) if total_for_percentage else 0
 
-    bruteforce = safe_count(INDEX_LOG, bruteforce_query)
-
-    traffic_query = {
-        "query": {"range": {"@timestamp": {"gte": "now-1m"}}}
-    }
-
-    request_count = safe_count(INDEX_LOG, traffic_query)
-    DDOS_THRESHOLD = 200
-    ddos = request_count if request_count > DDOS_THRESHOLD else 0
-
-    logs = get_logs()
+    # GET PROBLEMS
+    problems = []
+    try:
+        result = es.search(
+            index=INDEX_PROBLEM,
+            size=50,
+            sort=[{"timestamp": {"order": "desc"}}]
+        )
+        for h in result.get("hits", {}).get("hits", []):
+            problems.append(h.get("_source", {}))
+    except:
+        pass
 
     tz = pytz.timezone(TIMEZONE)
     local_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
@@ -269,16 +296,20 @@ def dashboard():
         "unknown": unknown,
         "daily_uptime": percent_up,
         "hosts": hosts,
-        "bruteforce": bruteforce,
-        "ddos": ddos,
-        "logs": logs,
+        "problems": problems,
         "time": local_time
     })
 
+# =========================
+# FRONTEND
+# =========================
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
 
+# =========================
+# RUN
+# =========================
 if __name__ == "__main__":
     thread = threading.Thread(target=sync_loop)
     thread.daemon = True

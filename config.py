@@ -1,5 +1,5 @@
 # ================= ZABBIX =================
-ZABBIX_URL = "http://192.168.59.1/zabbix/api_jsonrpc.php"
+ZABBIX_URL = "http://103.175.220.190:8088/api_jsonrpc.php"
 ZABBIX_USER = "Admin"
 ZABBIX_PASSWORD = "zabbix"
 
